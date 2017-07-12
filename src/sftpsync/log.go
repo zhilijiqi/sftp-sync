@@ -28,6 +28,26 @@ func NewLog(level int) *logger {
 	}
 	return &logger{level: level, logger: log.New(f, "", log.LstdFlags)}
 }
+func LogLevel(level int) {
+	Log.level = level
+}
+func LogLevelByName(name string) {
+	Log.level = getLogLevelByName(name)
+}
+func getLogLevelByName(name string) int {
+	switch name {
+	case "debug":
+		return Debug
+	case "info":
+		return Info
+	case "warn":
+		return Warn
+	case "error":
+		return Error
+	default:
+		return Debug
+	}
+}
 func (l *logger) Debug(v ...interface{}) {
 	if l.level <= Debug {
 		l.logger.Output(3, fmt.Sprintln(v...))

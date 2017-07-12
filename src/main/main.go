@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -9,55 +10,60 @@ import (
 )
 
 func main() {
-	//	var confFile, cmdServer, cmdLocal string
-	//	var cmdConf ss.Config
-	//	var printVer bool
+	var confFile, logLevel string
+	//var cmdConf ss.Config
+	var printVer bool
+	var interval int
 
-	//	flag.BoolVar(&printVer, "version", false, "print version")
-	//	flag.StringVar(&confFile, "c", "config.json", "specify config file")
-	//	flag.StringVar(&cmdServer, "s", "", "server address")
-	//	flag.StringVar(&cmdLocal, "b", "", "local address, listen only to this address if specified")
+	flag.BoolVar(&printVer, "version", false, "print version")
+	flag.StringVar(&confFile, "c", "config.json", "specify config file")
+	//	flag.StringVar(&cmdServer, "h", "", "server address and port(host:port)")
+	//	flag.StringVar(&cmdLocalPath, "l", "", "local dir")
+	//	flag.StringVar(&cmdServerPath, "s", "", "sync sftp server dir")
 	//	flag.StringVar(&cmdConfig.Password, "k", "", "password")
 	//	flag.IntVar(&cmdConfig.ServerPort, "p", 0, "server port")
-	//	flag.IntVar(&cmdConfig.Timeout, "t", 300, "timeout in seconds")
-	//	flag.IntVar(&cmdConfig.LocalPort, "l", 0, "local socks5 proxy port")
-	//	flag.StringVar(&cmdConfig.Method, "m", "", "encryption method, default: aes-256-cfb")
-	//	flag.BoolVar((*bool)(&debug), "d", false, "print debug message")
 
-	//	flag.Parse()
+	flag.StringVar(&logLevel, "log", "debug", "log Level(debug,info,warn,error)")
+	flag.IntVar(&interval, "i", 60, "interval in seconds")
 
-	//	if printVer {
-	//		ss.PrintVersion()
-	//		os.Exit(0)
-	//	}
+	//  flag.BoolVar((*bool)(&debug), "d", false, "print debug message")
 
-	args := os.Args
-	conf, err := ss.NewConfig(args)
+	flag.Parse()
+
+	if printVer {
+		ss.PrintVersion()
+		os.Exit(0)
+	}
+
+	ss.LogLevelByName(logLevel)
+
+	conf, err := ss.NewConfig(confFile)
 	if err != nil {
 		ss.Log.Fatal(err)
 	}
 	ss.Log.Info("conf info:", conf)
+
 	ss.GetPid()
-	//start(conf)
-	delay()
+	run(interval, conf)
 }
-func start(conf *ss.Config) {
+func run(interval int, conf *ss.Config) {
+	fmt.Println("running")
+
 	req := make(chan struct{}, 1)
 	done := make(chan struct{}, 1)
-	timer := time.NewTimer(time.Second)
+	i := time.Duration(interval) * time.Second
+	timer := time.NewTimer(i)
 	for {
 		<-timer.C
 		req <- struct{}{}
 		go ss.Syncd(conf, req, done)
 		<-done
-		timer.Reset(time.Second)
+		timer.Reset(i)
 	}
 }
 
 func delay() {
-
 	ticker := time.NewTicker(time.Minute * 1)
-
 	go func() {
 		for _ = range ticker.C {
 			fmt.Printf("ticked at %v\n", time.Now())

@@ -22,9 +22,9 @@ type Config struct {
 	ServerPath string
 }
 
-func NewConfig(args []string) (config *Config, err error) {
+func NewConfig(confFile string) (config *Config, err error) {
 	//baseDir := filepath.Dir(args[0])
-	return ParseConfig("")
+	return ParseConfig(confFile)
 }
 
 func ParseConfig(confFile string) (*Config, error) {
