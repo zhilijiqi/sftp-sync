@@ -23,8 +23,8 @@ func main() {
 	//	flag.StringVar(&cmdConfig.Password, "k", "", "password")
 	//	flag.IntVar(&cmdConfig.ServerPort, "p", 0, "server port")
 
-	flag.StringVar(&logLevel, "log", "debug", "log Level(debug,info,warn,error)")
-	flag.IntVar(&interval, "i", 60, "interval in seconds")
+	flag.StringVar(&logLevel, "log", "info", "log Level(debug,info,warn,error)")
+	flag.IntVar(&interval, "i", 2, "interval in seconds")
 
 	//  flag.BoolVar((*bool)(&debug), "d", false, "print debug message")
 
@@ -62,12 +62,8 @@ func run(interval int, conf *ss.Config) {
 	timer := time.NewTimer(i)
 	var counter int64 = 1
 	for {
-		if counter%5 == 0 || int64(i)*counter >= time.Hour.Nanoseconds() {
-			if err := fs.Reload(); err != nil {
-				ss.Log.Error(err)
-			}
-		}
 		<-timer.C
+		upFs(fs, counter, i)
 		req <- struct{}{}
 		go ss.Syncd(conf, req, done)
 		<-done
@@ -76,6 +72,13 @@ func run(interval int, conf *ss.Config) {
 	}
 }
 
+func upFs(fs *ss.LocalFs, counter int64, i time.Duration) {
+	if counter%5 == 0 || int64(i)*counter >= time.Hour.Nanoseconds() {
+		if err := fs.Reload(); err != nil {
+			ss.Log.Error(err)
+		}
+	}
+}
 func delay() {
 	ticker := time.NewTicker(time.Minute * 1)
 	go func() {
