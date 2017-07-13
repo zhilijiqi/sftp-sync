@@ -49,15 +49,29 @@ func main() {
 func run(interval int, conf *ss.Config) {
 	fmt.Println("running")
 
+	fs, err := ss.NewLocalFs(conf.LocalPath)
+	if err != nil {
+		ss.Log.Error(err)
+	}
+	ss.Log.Info("add cache dir:", conf.LocalPath)
+
 	req := make(chan struct{}, 1)
 	done := make(chan struct{}, 1)
+
 	i := time.Duration(interval) * time.Second
 	timer := time.NewTimer(i)
+	var counter int64 = 1
 	for {
+		if counter%5 == 0 || int64(i)*counter >= time.Hour.Nanoseconds() {
+			if err := fs.Reload(); err != nil {
+				ss.Log.Error(err)
+			}
+		}
 		<-timer.C
 		req <- struct{}{}
 		go ss.Syncd(conf, req, done)
 		<-done
+		counter++
 		timer.Reset(i)
 	}
 }
