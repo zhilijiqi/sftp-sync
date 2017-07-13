@@ -1,11 +1,13 @@
 package sftpsync
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 var localFileMap = make(map[string]*os.FileInfo)
@@ -21,6 +23,8 @@ func (fs *LocalFs) Reload() error {
 		delete(localFileMap, k)
 	}
 	dir := fs.dataDir
+	Log.Debug("FS Reload :", dir)
+
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			Log.Error(err)
@@ -31,7 +35,11 @@ func (fs *LocalFs) Reload() error {
 		}
 		Log.Debug("add cache file:", path)
 		rel, err := filepath.Rel(dir, path)
+		rel = filepath.Join(string(filepath.Separator), rel)
+
+		rel = filepath.FromSlash(rel)
 		Log.Debug("rel file key:", rel)
+
 		localFileMap[rel] = &info
 		return nil
 	})
@@ -40,20 +48,37 @@ func NewLocalFs(dir string) (*LocalFs, error) {
 	dataDir = dir
 	fs := LocalFs{dataDir: dir, cache: localFileMap}
 	err := fs.Reload()
-	//	for k, v := range localFileMap {
-	//		fmt.Println(k, *v)
-	//	}
+	for k, v := range localFileMap {
+		Log.Debug("cache fs:", k, v)
+	}
 	return &fs, err
 }
 
+func checkCacheFileChanged(stat os.FileInfo, rPath string) (bool, error) {
+	rPath = filepath.FromSlash(rPath)
+	Log.Debug("checkCacheFileChanged path:", rPath)
+
+	cacheStat, err := GetFileStat(rPath)
+	if err != nil {
+		return true, err
+	}
+	change := isFileChanged(cacheStat, stat)
+	Log.Info("isFileChanged path:", change, rPath)
+	return change, nil
+}
+
 func GetFileStat(name string) (stat os.FileInfo, err error) {
+	Log.Debug("GetFileStat from cache:", name)
 	if pStat, ok := localFileMap[name]; ok {
+		Log.Info("GetFileStat from cache is Ok:", name)
 		return *pStat, nil
 	}
-	if ok, err := isFileExists(name); !ok {
+	absName := getLocalPath(name)
+	Log.Debug("GetFileStat from path:", absName)
+	if ok, err := isFileExists(absName); !ok {
 		return nil, err
 	}
-	lStat, err := os.Lstat(getFileAbsPath(name))
+	lStat, err := os.Lstat(absName)
 	if err != nil {
 		return
 	}
@@ -61,9 +86,31 @@ func GetFileStat(name string) (stat os.FileInfo, err error) {
 	return lStat, nil
 }
 
-func getFileAbsPath(name string) string {
-	return filepath.Join(dataDir, name)
+func DelCacheLocalFile(list *list.List) {
+	if len(localFileMap) == list.Len() {
+		return
+	}
+	waitDelFileMap := make(map[string]int)
+	for e := list.Front(); e != nil; e = e.Next() {
+		k := e.Value.(string)
+		k = filepath.FromSlash(k)
+		waitDelFileMap[k] = 0
+	}
+	for k, _ := range localFileMap {
+		_, ok := waitDelFileMap[k]
+		Log.Debug("waitDelFileMap", k)
+		if !ok {
+			delete(localFileMap, k)
+			p := getLocalPath(k)
+			os.Remove(p)
+			Log.Info("del file:", p)
+		}
+	}
 }
+
+//func getFileAbsPath(name string) string {
+//	return filepath.Join(dataDir, name)
+//}
 
 func isFileExists(path string) (bool, error) {
 	stat, err := os.Stat(path)
@@ -80,6 +127,8 @@ func isFileExists(path string) (bool, error) {
 }
 
 func checkLocalDir(p string) error {
+	p = getLocalPath(p)
+
 	fileInfo, err := os.Stat(p)
 	if err != nil && !os.IsNotExist(err) {
 		return errors.New(fmt.Sprintf("stat dir:%s err:%v\n", p, err))
@@ -98,15 +147,28 @@ func checkLocalDir(p string) error {
 }
 func isFileChanged(rStat, lStat os.FileInfo) bool {
 	if rStat == nil || lStat == nil {
-		return false
-	}
-	if rStat.ModTime().Unix() == lStat.ModTime().Unix() {
 		return true
 	}
-	return false
+	if rStat.ModTime().Unix() == lStat.ModTime().Unix() {
+		return false
+	}
+	return true
+}
+
+func getLocalPath(p string) string {
+	return filepath.FromSlash(filepath.Join(dataDir, p))
+}
+func saveLocalFileAndMtime(reader io.Reader, p string, rStat os.FileInfo) error {
+	p = getLocalPath(p)
+
+	saveLocalFile(reader, p)
+	if err := os.Chtimes(p, time.Now(), rStat.ModTime()); err != nil {
+		return errors.New(fmt.Sprintf("mtime file:%s err:%v", p, err))
+	}
+	return nil
 }
 func saveLocalFile(reader io.Reader, p string) error {
-
+	Log.Debug("saveLocalFile :", p)
 	var perm os.FileMode = 0666
 	file, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, perm)
 	if err != nil {

@@ -1,11 +1,10 @@
 package sftpsync
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -14,12 +13,12 @@ import (
 func Syncd(conf *Config, req <-chan struct{}, done chan<- struct{}) {
 	for {
 		<-req
-		sync(conf.Host, conf.User, conf.Password, conf.ServerPath, conf.LocalPath)
+		sync(conf.Host, conf.User, conf.Password, conf.ServerPath)
 		done <- struct{}{}
 	}
 }
 
-func sync(host, user, password, serverPath, localPath string) (err error) {
+func sync(host, user, password, serverPath string) (err error) {
 	defer func() {
 		if err := recover(); err != nil {
 			Log.Error("sync err:%v", err)
@@ -50,14 +49,18 @@ func sync(host, user, password, serverPath, localPath string) (err error) {
 	Log.Debug("remote dir is:", wd, "remote sync dir is:", serverPath)
 
 	walk := ftpClient.Walk(serverPath)
+	list := list.New()
 	for walk.Step() {
+		list.PushBack(walk.Path())
+
 		if walk.Err() != nil {
 			continue
 		}
-		if err := checkRemoteFile(ftpClient, walk.Stat(), walk.Path(), localPath); err != nil {
+		if err := checkRemoteFile(ftpClient, walk.Stat(), walk.Path()); err != nil {
 			Log.Error("remote file :%s err:%v\n", walk.Path(), err)
 		}
 	}
+	DelCacheLocalFile(list)
 	return nil
 }
 
@@ -73,13 +76,18 @@ func getConn(user, password, host string) (client *ssh.Client, err error) {
 	return
 }
 
-func checkRemoteFile(ftpClient *sftp.Client, rStat os.FileInfo, rPath, sftpSavePath string) error {
-	p := filepath.FromSlash(sftpSavePath + rPath)
+func checkRemoteFile(ftpClient *sftp.Client, rStat os.FileInfo, rPath string) error {
+	//p := filepath.FromSlash(sftpSavePath + rPath)
 	if rStat.IsDir() {
-		return checkLocalDir(p)
+		return checkLocalDir(rPath)
 	}
-	if ok, err := checkCacheFileChanged(rStat, rPath); !ok {
-
+	Log.Debug("checkRemoteFile", rPath)
+	ok, err := checkCacheFileChanged(rStat, rPath)
+	if err != nil {
+		Log.Error(err)
+	}
+	if !ok {
+		return nil
 	}
 	//	lStat, err := os.Lstat(p)
 	//	if err != nil && !os.IsNotExist(err) {
@@ -90,14 +98,14 @@ func checkRemoteFile(ftpClient *sftp.Client, rStat os.FileInfo, rPath, sftpSaveP
 	//	}
 	sftpFile, err := ftpClient.Open(rPath)
 	if err != nil {
-		return errors.New(fmt.Sprintf("read sftp file:%s err:%v", p, err))
+		return errors.New(fmt.Sprintf("read sftp file:%s err:%v", rPath, err))
 	}
 	defer sftpFile.Close()
-	if err := saveLocalFile(sftpFile, p); err != nil {
+	if err := saveLocalFileAndMtime(sftpFile, rPath, rStat); err != nil {
 		return err
 	}
-	if err := os.Chtimes(p, time.Now(), rStat.ModTime()); err != nil {
-		return errors.New(fmt.Sprintf("mtime file:%s err:%v", p, err))
-	}
+	//	if err := os.Chtimes(p, time.Now(), rStat.ModTime()); err != nil {
+	//		return errors.New(fmt.Sprintf("mtime file:%s err:%v", p, err))
+	//	}
 	return nil
 }
