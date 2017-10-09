@@ -4,12 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
-
+	"runtime"
 	ss "sftpsync"
+	"time"
 )
 
 func main() {
+
 	var confFile, logLevel string
 	//var cmdConf ss.Config
 	var printVer bool
@@ -47,7 +48,7 @@ func main() {
 	run(interval, conf)
 }
 func run(interval int, conf *ss.Config) {
-	fmt.Println("running")
+	ss.Log.Info("running")
 
 	fs, err := ss.NewLocalFs(conf.LocalPath)
 	if err != nil {
@@ -57,15 +58,17 @@ func run(interval int, conf *ss.Config) {
 
 	req := make(chan struct{}, 1)
 	done := make(chan struct{}, 1)
+	go ss.Syncd(conf, req, done)
 
 	i := time.Duration(interval) * time.Second
 	timer := time.NewTimer(i)
+
 	var counter int64 = 1
 	for {
 		<-timer.C
 		upFs(fs, counter, i)
 		req <- struct{}{}
-		go ss.Syncd(conf, req, done)
+		//go ss.Syncd(conf, req, done)
 		<-done
 		counter++
 		timer.Reset(i)
