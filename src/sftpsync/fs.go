@@ -86,12 +86,12 @@ func GetFileStat(name string) (stat os.FileInfo, err error) {
 	return lStat, nil
 }
 
-func DelCacheLocalFile(list *list.List) {
-	if len(localFileMap) == list.Len() {
+func checkAndDelNotExistLocalFile(fileList *list.List) {
+	if len(localFileMap) == fileList.Len() {
 		return
 	}
 	waitDelFileMap := make(map[string]int)
-	for e := list.Front(); e != nil; e = e.Next() {
+	for e := fileList.Front(); e != nil; e = e.Next() {
 		k := e.Value.(string)
 		k = filepath.FromSlash(k)
 		waitDelFileMap[k] = 0

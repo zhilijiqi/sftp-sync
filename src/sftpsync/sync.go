@@ -60,7 +60,7 @@ func sync(host, user, password, serverPath string) (err error) {
 			Log.Error("remote file :%s err:%v\n", walk.Path(), err)
 		}
 	}
-	DelCacheLocalFile(list)
+	checkAndDelNotExistLocalFile(list)
 	return nil
 }
 
